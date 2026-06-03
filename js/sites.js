@@ -231,7 +231,6 @@ function renderSites() {
       const days       = s.dateList.filter(d => activeDts.has(d)).length || 1;
       const totalHours = getSiteHourCount(s, activeDts);
       const isMulti    = days > 1;
-      const showRowHours = !(mode === 'siteid' && hasMany);
       const meta = getSiteMeta(s.siteId);
 
       const activeDatesSorted = s.dateList.filter(d => activeDts.has(d)).sort((a,b) => new Date(a)-new Date(b));
@@ -241,15 +240,15 @@ function renderSites() {
       const durationBadge = isMulti
         ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">${days}d</span>`
         : `<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">1d</span>`;
-      const hoursBadge = showRowHours
-        ? `<span class="site-hours-badge" title="${totalHours} total hours" style="display:inline-flex;align-items:center;flex-shrink:0;min-height:20px;padding:2px 8px;border-radius:9999px;background:#D1FAE5;color:#047857;font-size:0.72rem;font-weight:800;line-height:1;">${totalHours}h</span>`
-        : '';
       const mainBadge = meta.isMain
         ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-white">Main</span>`
         : '';
       const flagBadge = meta.flag
         ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200 uppercase">${meta.flag}</span>`
-        : '';
+        : '<span class="site-meta-empty">-</span>';
+      const tagBadges = meta.tags.length
+        ? meta.tags.map(tag => `<span class="site-row-tag" title="${escapeHtml(tag)}">${escapeHtml(tag)}</span>`).join('')
+        : '<span class="site-meta-empty">-</span>';
 
       const activeIdxs = activeDataCols().map((dc,i)=>({date:dc.date,i})).filter(x=>s.dateList.includes(x.date)).map(x=>x.i);
       const activeGap  = activeIdxs.length > 1 && (activeIdxs[activeIdxs.length-1] - activeIdxs[0] + 1) > activeIdxs.length;
@@ -257,29 +256,28 @@ function renderSites() {
         ? `<span title="Non-consecutive dates: ${activeDatesSorted.join(', ')}" class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200 cursor-help"><svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>Gap</span>`
         : '';
 
-      const idTag = s.siteId
-        ? (showHeader && mode === 'siteid'
-            ? `<span class="w-1.5 h-4 rounded-full bg-green-300 flex-shrink-0"></span>`
-            : `<span class="text-xs font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-800 flex-shrink-0">${s.siteId}</span>`)
-        : '';
-
       const desc = s.siteId ? s.display.replace(s.siteId, '').trim() : s.display;
 
       const safeDisplay = s.display.replace(/'/g, "\\'");
       return `
-        <div class="site-card ${groupBg} px-4 py-2.5 transition ${showHeader ? 'border-b border-gray-100 last:border-0' : 'rounded-xl border border-gray-100 mb-1'}" style="display:grid;grid-template-columns:42px minmax(240px,1fr) 72px 112px 112px 96px;column-gap:8px;align-items:center;">
+        <div class="site-card site-grid ${groupBg} px-4 py-2.5 transition ${showHeader ? 'border-b border-gray-100 last:border-0' : 'rounded-xl border border-gray-100 mb-1'}">
           <div class="text-center text-xs font-bold text-gray-300 cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">${itemNum}</div>
-          <div class="site-name-cell flex items-center gap-2 cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">
-            ${idTag}
-            <span class="font-semibold text-gray-800 text-sm truncate flex-1 min-w-0">${desc || s.display}</span>
-            ${mainBadge}
-            ${flagBadge}
-            ${hoursBadge}
+          <div class="site-id-col text-center cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">
+            ${s.siteId ? `<span class="text-xs font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-800">${s.siteId}</span>` : '<span class="site-meta-empty">-</span>'}
           </div>
-          <div class="site-flag flex justify-center cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">${gapBadge}</div>
+          <div class="site-name-cell flex items-center gap-2 cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">
+            <span class="font-semibold text-gray-800 text-sm truncate flex-1 min-w-0">${escapeHtml(desc || s.display)}</span>
+            ${mainBadge}
+          </div>
+          <div class="site-flag flex justify-center cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">${flagBadge}</div>
+          <div class="site-tags-col site-tag-cell cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">${tagBadges}</div>
+          <div class="site-hours-col text-center cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="${totalHours} total hours">
+            <span class="site-hours-badge">${totalHours}h</span>
+          </div>
           <div class="site-date text-center text-xs text-gray-500 cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">${dispFrom || '—'}</div>
           <div class="site-date text-center text-xs text-gray-500 cursor-pointer" onclick="openSiteModal('${safeDisplay}')" title="Click to view detail">${dispTo !== dispFrom ? dispTo : '—'}</div>
           <div class="site-actions flex gap-1 flex-wrap items-center">
+            ${gapBadge}
             ${durationBadge}
             ${s.siteId ? `<button onclick="openSiteSetupModal('${s.siteId}')" title="Set main site, flag, and cost"
               class="p-1 rounded hover:bg-emerald-50 text-emerald-500 hover:text-emerald-700 transition flex-shrink-0">
@@ -313,6 +311,34 @@ function renderSites() {
 }
 
 function filterSites() { window._sitePage = 1; renderSites(); }
+
+function getSiteJobRowsForIDB(sites = window._allSites || []) {
+  return sites.map(site => {
+    const meta = getSiteMeta(site.siteId);
+    const totalHours = getSiteHourCount(site);
+    return {
+      display: site.display,
+      siteId: site.siteId,
+      jobName: site.siteId ? site.display.replace(site.siteId, '').trim() : site.display,
+      flag: meta.flag,
+      tags: meta.tags,
+      isMain: meta.isMain,
+      totalHours,
+      totalSlots: site.totalSlots || 0,
+      from: site.from,
+      to: site.to,
+      actualDays: site.actualDays || 0,
+      hasGap: !!site.hasGap,
+      dateList: site.dateList || [],
+      slotsByDate: site.slotsByDate || {}
+    };
+  });
+}
+
+async function persistCurrentSiteJobs(sourceName = window._scheduleDataset?.sourceName || 'IndexedDB schedule') {
+  if (typeof saveSiteJobsToIDB !== 'function') return;
+  await saveSiteJobsToIDB(getSiteJobRowsForIDB(), sourceName);
+}
 
 function setSiteFilter(val) {
   window._siteFilter = val;

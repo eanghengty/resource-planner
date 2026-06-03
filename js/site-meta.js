@@ -1,5 +1,6 @@
 const SITE_META_KEY = 'schedulehq-site-meta-v1';
 const SITE_FLAGS = ['macro', 'ibc', 'tx', 'tunnel', 'core'];
+let _siteMetaCache = null;
 
 function normalizeSiteTags(tags) {
   const source = Array.isArray(tags) ? tags : String(tags || '').split(',');
@@ -23,14 +24,13 @@ function defaultSiteMetaState() {
   };
 }
 
-function loadSiteMetaState() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SITE_META_KEY));
-    const base = defaultSiteMetaState();
-    const state = raw && typeof raw === 'object' ? raw : base;
-    const rawSites = state.sites && typeof state.sites === 'object' ? state.sites : {};
+function normalizeSiteMetaState(raw) {
+  const base = defaultSiteMetaState();
+  const state = raw && typeof raw === 'object' ? raw : base;
+  const rawSites = state.sites && typeof state.sites === 'object' ? state.sites : {};
 
-    state.sites = Object.fromEntries(Object.entries(rawSites).map(([siteId, record]) => {
+  return {
+    sites: Object.fromEntries(Object.entries(rawSites).map(([siteId, record]) => {
       const safeRecord = record && typeof record === 'object' ? record : {};
       const flag = SITE_FLAGS.includes(safeRecord.flag) ? safeRecord.flag : '';
       return [siteId, {
@@ -38,16 +38,42 @@ function loadSiteMetaState() {
         flag,
         tags: normalizeSiteTags(safeRecord.tags)
       }];
-    }));
-    state.rates = { ...base.rates, ...(state.rates || {}) };
-    return state;
+    })),
+    rates: { ...base.rates, ...(state.rates || {}) }
+  };
+}
+
+async function initSiteMetaState() {
+  const fromIDB = typeof getSiteMetaFromIDB === 'function' ? await getSiteMetaFromIDB() : null;
+  if (fromIDB) {
+    _siteMetaCache = normalizeSiteMetaState(fromIDB);
+    return _siteMetaCache;
+  }
+
+  try {
+    const fromLocal = JSON.parse(localStorage.getItem(SITE_META_KEY));
+    _siteMetaCache = normalizeSiteMetaState(fromLocal);
+    if (typeof saveSiteMetaToIDB === 'function') saveSiteMetaToIDB(_siteMetaCache);
+    return _siteMetaCache;
   } catch {
-    return defaultSiteMetaState();
+    _siteMetaCache = defaultSiteMetaState();
+    return _siteMetaCache;
   }
 }
 
+function loadSiteMetaState() {
+  if (_siteMetaCache) return _siteMetaCache;
+  try {
+    _siteMetaCache = normalizeSiteMetaState(JSON.parse(localStorage.getItem(SITE_META_KEY)));
+  } catch {
+    _siteMetaCache = defaultSiteMetaState();
+  }
+  return _siteMetaCache;
+}
+
 function saveSiteMetaState(state) {
-  localStorage.setItem(SITE_META_KEY, JSON.stringify(state));
+  _siteMetaCache = normalizeSiteMetaState(state);
+  if (typeof saveSiteMetaToIDB === 'function') saveSiteMetaToIDB(_siteMetaCache);
 }
 
 function getSiteMeta(siteId) {
@@ -377,6 +403,7 @@ function saveSiteSetup() {
   closeSiteSetupModal();
   renderSites();
   renderFlagSummary();
+  if (typeof persistCurrentSiteJobs === 'function') persistCurrentSiteJobs();
   showToast(`Saved setup for ${siteId}`);
 }
 
@@ -384,4 +411,5 @@ function updateFlagRate(flag, value) {
   setFlagRate(flag, Number(value || 0));
   renderFlagSummary();
   renderSites();
+  if (typeof persistCurrentSiteJobs === 'function') persistCurrentSiteJobs();
 }

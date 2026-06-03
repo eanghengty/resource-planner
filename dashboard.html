@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="css/dashboard.css?v=hours-layout-3" />
+  <link rel="stylesheet" href="css/dashboard.css?v=full-idb-1" />
 </head>
 <body>
 
@@ -100,14 +100,14 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
         </svg>
-        Refresh Data
+        Refresh Saved Data
       </button>
-      <button onclick="clearHandleFromIDB();window._fileHandle=null;loadFile()" class="sidebar-action-btn">
+      <button onclick="importExcelFile()" class="sidebar-action-btn">
         <svg class="btn-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
         </svg>
-        Change File
+        Import Excel
       </button>
     </div>
   </aside>
@@ -151,23 +151,23 @@
                 d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
           </div>
-          <div class="landing-title">Open your schedule file</div>
+          <div class="landing-title">Import your schedule file</div>
           <div class="landing-sub">
-            Select your <span style="font-family:monospace;font-weight:600;color:#64748B;">test.xlsx</span> to get started.<br>
-            Edits save directly back to the file.
+            Select your <span style="font-family:monospace;font-weight:600;color:#64748B;">.xlsx</span> once to get started.<br>
+            Edits save to IndexedDB, not back to Excel.
           </div>
           <div class="landing-btns">
             <button id="resume-btn" onclick="resumeFile()" class="btn-secondary" style="display:none;">
               <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
-              Resume last file
+              Load saved data
             </button>
-            <button onclick="loadFile()" class="btn-primary">
+            <button onclick="importExcelFile()" class="btn-primary">
               <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
               </svg>
-              Open Excel file
+              Import Excel file
             </button>
           </div>
         </div>
@@ -408,11 +408,13 @@
           </div>
 
           <!-- Column header -->
-          <div class="site-column-header"
-               style="display:grid;grid-template-columns:42px minmax(240px,1fr) 72px 112px 112px 96px;column-gap:8px;align-items:center;">
+          <div class="site-column-header site-grid">
             <div class="text-center">#</div>
-            <div>Site / Job Name</div>
+            <div class="text-center">Site ID</div>
+            <div>Job Name</div>
             <div class="text-center">Flag</div>
+            <div>Tags</div>
+            <div class="text-center">T Hours</div>
             <div class="text-center">Start</div>
             <div class="text-center">End</div>
             <div class="text-center">Actions</div>
@@ -723,14 +725,14 @@
 
 <!-- JS modules (dependency order) -->
 <script src="js/utils.js?v=hours-layout-3"></script>
-<script src="js/idb.js?v=hours-layout-2"></script>
+<script src="js/idb.js?v=full-idb-1"></script>
 <script src="js/filters.js?v=hours-layout-3"></script>
-<script src="js/site-meta.js?v=site-meta-2"></script>
-<script src="js/sites.js?v=hours-layout-3"></script>
+<script src="js/site-meta.js?v=full-idb-1"></script>
+<script src="js/sites.js?v=full-idb-1"></script>
 <script src="js/modal.js?v=hours-layout-2"></script>
-<script src="js/edit-job.js?v=hours-layout-2"></script>
+<script src="js/edit-job.js?v=full-idb-1"></script>
 <script src="js/email-config.js?v=hours-layout-2"></script>
-<script src="js/loader.js?v=hours-layout-2"></script>
+<script src="js/loader.js?v=full-idb-1"></script>
 
 <script>
 // Sidebar scroll-to

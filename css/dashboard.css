@@ -325,7 +325,7 @@ th, td { white-space:nowrap; }
 /* Site cards */
 .site-grid {
   display:grid;
-  grid-template-columns: 42px minmax(240px,1fr) 72px 112px 112px 96px;
+  grid-template-columns: 42px 76px minmax(220px,1fr) 86px minmax(130px,0.75fr) 80px 104px 104px 96px;
   column-gap:8px;
   align-items:center;
 }
@@ -363,11 +363,31 @@ th, td { white-space:nowrap; }
   line-height:1;
 }
 .site-actions { justify-content:center; }
+.site-meta-empty { color:#CBD5E1; font-size:0.75rem; font-weight:700; }
+.site-tag-cell {
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  min-width:0;
+}
+.site-row-tag {
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  padding:2px 7px;
+  border-radius:999px;
+  border:1px solid #E2E8F0;
+  background:#F8FAFC;
+  color:#475569;
+  font-size:0.68rem;
+  font-weight:700;
+}
 
 @media (max-width: 640px) {
   .site-grid { grid-template-columns: 32px minmax(0,1fr) auto; }
   .site-column-header { display:none; }
-  .site-flag, .site-date { display:none !important; }
+  .site-id-col, .site-flag, .site-tags-col, .site-hours-col, .site-date { display:none !important; }
   .site-actions { justify-content:flex-end; }
 }
 

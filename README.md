@@ -14,8 +14,10 @@ A local, browser-based dashboard that reads a team schedule from an Excel (`.xls
 
 ## Features
 
+Current data model: Excel is import-only. Once a workbook is imported, the schedule, Sites & Jobs rows, and job-name edits are saved in IndexedDB and the app no longer writes changes back to the Excel file.
+
 - **Live Excel reading** — opens your `.xlsx` directly in the browser; no upload, no copy
-- **Direct write-back** — renaming a job saves instantly back to the same file on disk (File System Access API)
+- **IndexedDB editing** — renaming a job saves instantly to the browser database and does not modify the Excel file
 - **Auto-resume** — remembers the last opened file via IndexedDB; reopens automatically on refresh
 - **Unique Sites card** — shows the count of distinct site IDs (e.g. `E07`) active within the current filter window; updates live when the date range or month filter changes
 - **Sites & Jobs panel**
@@ -26,8 +28,9 @@ A local, browser-based dashboard that reads a team schedule from an Excel (`.xls
   - Filter visible sites by saved Flag and Tag values
   - Collapsible groups with pagination (20 groups per page)
   - Gap detection — flags non-consecutive date ranges
-  - Edit job name inline and save back to Excel
-  - Site Setup saves browser-local main-site, flag, rate, and tag metadata per site ID
+  - Edit job name inline and save back to IndexedDB
+  - Site Setup saves browser-local main-site, flag, rate, and tag metadata per site ID in IndexedDB
+  - Site/job row snapshots are persisted in IndexedDB with Site ID, Job Name, Flag, Tags, Total Hours, Start, and End fields
   - **Group by Start Date** — date groups are scoped to the active filter window; each group header shows site entry count and unique site ID count; the Start column for each row reflects the group's date, not the site's overall first date
   - "X sites found" label and the Unique Sites card always show the same count, computed from the same filtered list
 - **Draft Email to Outlook** — each date group header (Group by Start Date mode) has a **Draft Email** button that generates a `.eml` file; double-clicking it opens Outlook 2021 as a new compose window with To, CC, Subject, and a formatted HTML table pre-filled — no manual pasting needed
@@ -134,7 +137,7 @@ Convert to HTML/
     │                     #   renderSites() updates both "sites found" label and
     │                     #   the Unique Sites card from a single computed value
     ├── modal.js          # Site detail modal + Escape key handler
-    ├── edit-job.js       # Edit job name modal + Excel write-back
+    ├── edit-job.js       # Edit job name modal + IndexedDB save
     ├── email-config.js   # Email Recipients modal, localStorage config,
     │                     #   draftEmailForDate() — builds and downloads .eml
     └── loader.js         # loadFile, schedule table render, resumeFile, auto-init
@@ -159,7 +162,7 @@ utils → idb → filters → sites → modal → edit-job → email-config → 
    - `renderSites()` builds the collapsible, paginated sites panel. In **Group by Start Date** mode, `buildGroups()` intersects each site's full date list with `activeDataCols()` so only dates inside the active filter window generate groups. The Start column for each row uses the group's date rather than the site's overall first date.
    - The schedule table is built directly inside `loadFile()`
 
-4. **Edit & save** — `saveEditJobName()` in `edit-job.js` patches the in-memory workbook, re-serialises it with `XLSX.write()`, and streams the bytes directly back to disk via the file handle's `createWritable()` — no download required.
+4. **Edit & save** — `saveEditJobName()` in `edit-job.js` patches the saved IndexedDB schedule dataset, re-derives Sites & Jobs, and refreshes the dashboard without writing back to Excel.
 
 5. **Draft Email** — `draftEmailForDate()` in `email-config.js` reads saved recipients from `localStorage`, builds an Outlook-compatible HTML email (inline styles, `border-collapse` table), and writes it into a `.eml` file using the `X-Unsent: 1` MIME header. The browser downloads the file; double-clicking it opens Outlook 2021 as a new compose draft.
 
