@@ -1,12 +1,19 @@
 // Main data loader: Excel is import-only; IndexedDB is the app source of truth.
-async function loadFile() {
+async function loadFile(slotId = null) {
   showLoading();
 
   try {
-    const saved = typeof getScheduleDataFromIDB === 'function' ? await getScheduleDataFromIDB() : null;
+    if (slotId && typeof setActiveScheduleSlotId === 'function') {
+      await setActiveScheduleSlotId(slotId);
+    }
+
+    await refreshSlotUI();
+
+    const activeSlotId = typeof getActiveScheduleSlotId === 'function' ? await getActiveScheduleSlotId() : null;
+    const saved = typeof getScheduleDataFromIDB === 'function' ? await getScheduleDataFromIDB(activeSlotId) : null;
     if (!saved || !Array.isArray(saved.employees) || !Array.isArray(saved.dateCols)) {
       showLanding();
-      document.getElementById('resume-btn')?.classList.add('hidden');
+      updateResumeVisibility();
       return;
     }
 
@@ -18,6 +25,10 @@ async function loadFile() {
 }
 
 async function importExcelFile() {
+  await openImportSlotModal();
+}
+
+async function performImportExcelFile(target) {
   showLoading();
 
   try {
@@ -28,13 +39,71 @@ async function importExcelFile() {
     }
 
     const dataset = parseWorkbookToDataset(picked.buffer, picked.name);
+    const slot = await prepareSlotForImport(dataset, picked.name, target);
+    window._activeScheduleSlotId = slot.id;
     if (typeof saveScheduleDataToIDB === 'function') await saveScheduleDataToIDB(dataset);
+    if (typeof setActiveScheduleSlotId === 'function') await setActiveScheduleSlotId(slot.id);
+    await refreshSlotUI();
     await renderDashboardFromDataset(dataset);
-    showToast(`Imported ${picked.name} into IndexedDB`);
+    showToast(`Imported ${picked.name} into ${slot.label}`);
   } catch (err) {
     showLanding();
     showLoadError(err);
   }
+}
+
+function deriveSlotLabel(dataset, fallbackName = '') {
+  const months = [...new Set((dataset?.dateCols || []).map(dc => monthKey(dc.date)).filter(Boolean))];
+  if (months.length === 1) return months[0];
+  if (months.length > 1) return `${months[0]} to ${months[months.length - 1]}`;
+  return String(fallbackName || dataset?.sourceName || 'Imported schedule')
+    .replace(/\.[^.]+$/, '')
+    .trim() || 'Imported schedule';
+}
+
+async function prepareSlotForImport(dataset, importName, target = {}) {
+  const now = new Date().toISOString();
+  const slots = typeof getScheduleSlots === 'function' ? await getScheduleSlots() : [];
+  const targetMode = target?.mode === 'new' ? 'new' : 'existing';
+  const targetSlotId = targetMode === 'existing' ? target.slotId : null;
+  const activeSlot = slots.find(slot => slot.id === targetSlotId) || null;
+  const sourceName = importName || dataset.sourceName || '';
+  const requestedLabel = String(target?.label || '').trim();
+  const slotLabel = requestedLabel || deriveSlotLabel(dataset, sourceName);
+
+  if (targetMode === 'existing' && activeSlot) {
+    const updatedSlot = typeof updateScheduleSlot === 'function'
+      ? await updateScheduleSlot(activeSlot.id, {
+          sourceName,
+          updatedAt: now,
+          lastImportName: sourceName
+        })
+      : null;
+    return updatedSlot || activeSlot;
+  }
+
+  if (targetMode === 'existing') {
+    throw new Error('Choose a valid import target slot before importing.');
+  }
+
+  if (typeof createScheduleSlot === 'function') {
+    return await createScheduleSlot({
+      label: slotLabel,
+      sourceName,
+      createdAt: now,
+      updatedAt: now,
+      lastImportName: sourceName
+    });
+  }
+
+  return {
+    id: targetSlotId || `slot-${Date.now()}`,
+    label: slotLabel,
+    sourceName,
+    createdAt: now,
+    updatedAt: now,
+    lastImportName: sourceName
+  };
 }
 
 function showLoading() {
@@ -155,6 +224,10 @@ function excelSerialToLabel(serial) {
 async function renderDashboardFromDataset(dataset) {
   if (typeof initSiteMetaState === 'function') await initSiteMetaState();
 
+  const activeSlotId = typeof getActiveScheduleSlotId === 'function' ? await getActiveScheduleSlotId() : null;
+  const slots = typeof getScheduleSlots === 'function' ? await getScheduleSlots() : [];
+  const activeSlot = slots.find(slot => slot.id === activeSlotId) || null;
+
   const employees = Array.isArray(dataset.employees) ? dataset.employees : [];
   const dateCols = Array.isArray(dataset.dateCols) ? dataset.dateCols : [];
   const sites = extractSites(employees, dateCols);
@@ -165,6 +238,8 @@ async function renderDashboardFromDataset(dataset) {
 
   window._scheduleDataset = {
     ...dataset,
+    activeSlotId,
+    activeSlotLabel: activeSlot?.label || '',
     employees,
     dateCols,
     updatedAt: dataset.updatedAt || dataset.importedAt || new Date().toISOString()
@@ -185,6 +260,7 @@ async function renderDashboardFromDataset(dataset) {
   populateMonthFilter(dateCols);
   renderSites();
   renderScheduleTable(employees, dateCols);
+  updateResumeVisibility();
   showDashboard(dataset);
 }
 
@@ -274,7 +350,11 @@ function showDashboard(dataset) {
   dash.style.display = '';
 
   if (typeof updateSidebarFileChip === 'function') {
-    updateSidebarFileChip(dataset.sourceName || 'IndexedDB schedule');
+    updateSidebarFileChip(window._scheduleDataset?.activeSlotLabel || dataset.sourceName || 'IndexedDB schedule');
+  }
+
+  if (typeof updateTopbarSource === 'function') {
+    updateTopbarSource(window._scheduleDataset?.activeSlotLabel || 'No slot selected', dataset.sourceName || window._scheduleDataset?.activeSlotLabel || 'IndexedDB schedule');
   }
 }
 
@@ -312,9 +392,141 @@ async function resumeFile() {
   await loadFile();
 }
 
+async function openImportSlotModal() {
+  await refreshSlotUI();
+  await populateImportTargetOptions();
+  document.getElementById('import-slot-modal').style.display = 'flex';
+  setTimeout(() => {
+    const mode = getSelectedImportTargetMode();
+    const focusEl = mode === 'new'
+      ? document.getElementById('import-target-label')
+      : document.getElementById('import-target-slot');
+    focusEl?.focus();
+  }, 50);
+}
+
+function closeImportSlotModal() {
+  document.getElementById('import-slot-modal').style.display = 'none';
+}
+
+async function populateImportTargetOptions() {
+  const slots = typeof getScheduleSlots === 'function' ? await getScheduleSlots() : [];
+  const activeSlotId = typeof getActiveScheduleSlotId === 'function' ? await getActiveScheduleSlotId() : null;
+  const existingRadio = document.getElementById('import-target-existing');
+  const newRadio = document.getElementById('import-target-new');
+  const select = document.getElementById('import-target-slot');
+  const labelInput = document.getElementById('import-target-label');
+  const error = document.getElementById('import-target-error');
+
+  if (select) {
+    select.innerHTML = slots.length
+      ? slots.map(slot => `<option value="${escapeHtml(slot.id)}" ${slot.id === activeSlotId ? 'selected' : ''}>${escapeHtml(slot.label)}</option>`).join('')
+      : '<option value="">Create a new slot first</option>';
+    select.disabled = slots.length === 0;
+  }
+
+  if (existingRadio && newRadio) {
+    existingRadio.disabled = slots.length === 0;
+    existingRadio.checked = slots.length > 0;
+    newRadio.checked = slots.length === 0;
+  }
+
+  if (labelInput && !labelInput.value.trim()) {
+    labelInput.value = '';
+  }
+
+  if (error) {
+    error.style.display = 'none';
+    error.textContent = '';
+  }
+
+  updateImportTargetMode();
+}
+
+function getSelectedImportTargetMode() {
+  return document.getElementById('import-target-new')?.checked ? 'new' : 'existing';
+}
+
+function updateImportTargetMode() {
+  const mode = getSelectedImportTargetMode();
+  const select = document.getElementById('import-target-slot');
+  const labelInput = document.getElementById('import-target-label');
+
+  if (select) select.disabled = mode !== 'existing' || !select.options.length || !select.value;
+  if (labelInput) labelInput.disabled = mode !== 'new';
+}
+
+function showImportTargetError(message) {
+  const error = document.getElementById('import-target-error');
+  if (!error) return;
+  error.textContent = message;
+  error.style.display = 'block';
+}
+
+async function submitImportSlotModal() {
+  const mode = getSelectedImportTargetMode();
+  const slotId = document.getElementById('import-target-slot')?.value || '';
+  const label = (document.getElementById('import-target-label')?.value || '').trim().replace(/\s+/g, ' ');
+
+  if (mode === 'existing' && !slotId) {
+    showImportTargetError('Choose an existing slot or create a new slot label.');
+    return;
+  }
+
+  if (mode === 'new' && !label) {
+    showImportTargetError('Enter a new slot label such as May 2026.');
+    document.getElementById('import-target-label')?.focus();
+    return;
+  }
+
+  closeImportSlotModal();
+  await performImportExcelFile({ mode, slotId, label });
+}
+
+async function onSlotPickerChange(slotId) {
+  if (!slotId) return;
+  if (typeof setActiveScheduleSlotId === 'function') await setActiveScheduleSlotId(slotId);
+  await loadFile(slotId);
+}
+
+async function refreshSlotUI() {
+  const slots = typeof getScheduleSlots === 'function' ? await getScheduleSlots() : [];
+  const activeSlotId = typeof getActiveScheduleSlotId === 'function' ? await getActiveScheduleSlotId() : null;
+  const select = document.getElementById('slot-picker');
+  const status = document.getElementById('slot-status');
+
+  if (select) {
+    select.innerHTML = slots.length
+      ? slots.map(slot => `<option value="${escapeHtml(slot.id)}" ${slot.id === activeSlotId ? 'selected' : ''}>${escapeHtml(slot.label)}</option>`).join('')
+      : '<option value="">No saved slots yet</option>';
+    select.disabled = slots.length === 0;
+  }
+
+  if (status) {
+    const activeSlot = slots.find(slot => slot.id === activeSlotId) || null;
+    status.textContent = activeSlot
+      ? `${activeSlot.label} · ${activeSlot.lastImportName || activeSlot.sourceName || 'No file imported yet'}`
+      : 'No active import slot selected';
+  }
+
+  updateResumeVisibility(slots, activeSlotId);
+}
+
+function updateResumeVisibility(slotsArg, activeSlotIdArg) {
+  const resumeBtn = document.getElementById('resume-btn');
+  if (!resumeBtn) return;
+
+  const slots = Array.isArray(slotsArg) ? slotsArg : [];
+  const activeSlotId = activeSlotIdArg !== undefined ? activeSlotIdArg : (window._activeScheduleSlotId || window._scheduleDataset?.activeSlotId || null);
+  const hasSlots = slots.length > 0 || !!activeSlotId;
+  resumeBtn.style.display = hasSlots ? 'inline-flex' : 'none';
+}
+
 (async () => {
-  const saved = typeof getScheduleDataFromIDB === 'function' ? await getScheduleDataFromIDB() : null;
-  if (saved) {
+  await refreshSlotUI();
+  const activeSlotId = typeof getActiveScheduleSlotId === 'function' ? await getActiveScheduleSlotId() : null;
+  const saved = typeof getScheduleDataFromIDB === 'function' ? await getScheduleDataFromIDB(activeSlotId) : null;
+  if (saved && activeSlotId) {
     await loadFile();
   } else {
     showLanding();

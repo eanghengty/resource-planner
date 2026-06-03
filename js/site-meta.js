@@ -1,6 +1,7 @@
 const SITE_META_KEY = 'schedulehq-site-meta-v1';
 const SITE_FLAGS = ['macro', 'ibc', 'tx', 'tunnel', 'core'];
 let _siteMetaCache = null;
+let _siteMetaCacheSlotId = null;
 
 function normalizeSiteTags(tags) {
   const source = Array.isArray(tags) ? tags : String(tags || '').split(',');
@@ -44,35 +45,32 @@ function normalizeSiteMetaState(raw) {
 }
 
 async function initSiteMetaState() {
+  const activeSlotId = window._activeScheduleSlotId || (typeof getActiveScheduleSlotId === 'function' ? await getActiveScheduleSlotId() : null);
   const fromIDB = typeof getSiteMetaFromIDB === 'function' ? await getSiteMetaFromIDB() : null;
   if (fromIDB) {
     _siteMetaCache = normalizeSiteMetaState(fromIDB);
+    _siteMetaCacheSlotId = activeSlotId;
     return _siteMetaCache;
   }
 
-  try {
-    const fromLocal = JSON.parse(localStorage.getItem(SITE_META_KEY));
-    _siteMetaCache = normalizeSiteMetaState(fromLocal);
-    if (typeof saveSiteMetaToIDB === 'function') saveSiteMetaToIDB(_siteMetaCache);
-    return _siteMetaCache;
-  } catch {
-    _siteMetaCache = defaultSiteMetaState();
-    return _siteMetaCache;
-  }
+  _siteMetaCache = defaultSiteMetaState();
+  _siteMetaCacheSlotId = activeSlotId;
+  return _siteMetaCache;
 }
 
 function loadSiteMetaState() {
-  if (_siteMetaCache) return _siteMetaCache;
-  try {
-    _siteMetaCache = normalizeSiteMetaState(JSON.parse(localStorage.getItem(SITE_META_KEY)));
-  } catch {
+  const activeSlotId = window._activeScheduleSlotId || null;
+  if (_siteMetaCache && _siteMetaCacheSlotId === activeSlotId) return _siteMetaCache;
+  if (_siteMetaCacheSlotId !== activeSlotId) {
     _siteMetaCache = defaultSiteMetaState();
+    _siteMetaCacheSlotId = activeSlotId;
   }
   return _siteMetaCache;
 }
 
 function saveSiteMetaState(state) {
   _siteMetaCache = normalizeSiteMetaState(state);
+  _siteMetaCacheSlotId = window._activeScheduleSlotId || null;
   if (typeof saveSiteMetaToIDB === 'function') saveSiteMetaToIDB(_siteMetaCache);
 }
 
@@ -350,8 +348,8 @@ function openSiteSetupModal(siteId) {
   document.getElementById('site-setup-rate').value = meta.flag ? getFlagRate(meta.flag) : '';
   document.getElementById('site-setup-tag-input').value = '';
   document.getElementById('site-setup-subtitle').textContent = grouped && grouped.count > 1
-    ? `Saved in this browser for ${siteId} and shared across ${grouped.count} sub jobs.`
-    : `Saved in this browser for this site ID.`;
+    ? `Saved in the active import slot for ${siteId} and shared across ${grouped.count} sub jobs.`
+    : `Saved in the active import slot for this site ID.`;
 
   const flagHost = document.getElementById('site-setup-flag-options');
   flagHost.innerHTML = SITE_FLAGS.map(flag => {
