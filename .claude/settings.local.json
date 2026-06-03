@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"C:\\\\Users\\\\Hengty\\(Jack\\)Eang\\\\OneDrive - SkyAus Infrastructure Pty Ltd\\\\Desktop\\\\Self Induction\\\\Claude app\\\\Convert to HTML\" -type f -exec ls -lh {} \\\\;)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -c ' *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "WebSearch",
+      "WebFetch(domain:dribbble.com)"
+    ]
+  }
+}
