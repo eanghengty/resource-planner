@@ -86,10 +86,10 @@
       </button>
     </nav>
 
-    <!-- File status chip -->
+    <!-- Active slot chip -->
     <div class="sidebar-file-chip" id="sidebar-file-chip" style="display:none;">
       <div class="sidebar-file-dot"></div>
-      <span class="sidebar-file-name" id="sidebar-file-name">test.xlsx</span>
+      <span class="sidebar-file-name" id="sidebar-file-name">No active slot selected</span>
     </div>
 
     <!-- Bottom actions -->
@@ -102,12 +102,12 @@
         </select>
         <div id="slot-status" style="font-size:0.72rem;line-height:1.4;color:#94A3B8;">No active import slot selected</div>
       </div>
-      <button onclick="loadFile()" class="sidebar-action-btn primary">
+      <button onclick="refreshSavedData()" class="sidebar-action-btn primary">
         <svg class="btn-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
         </svg>
-        Load Active Slot
+        Refresh Saved Data
       </button>
       <button onclick="importExcelFile()" class="sidebar-action-btn">
         <svg class="btn-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,7 +135,7 @@
         </button>
         <div>
           <div class="topbar-title">Team Schedule Dashboard</div>
-          <div class="topbar-sub" id="topbar-source" style="margin-top:1px;">Live view · <span id="topbar-source-slot" style="font-weight:700;">No slot selected</span> · <span id="topbar-source-file" style="font-family:monospace;font-size:0.68rem;">No file imported</span></div>
+          <div class="topbar-sub" id="topbar-source" style="margin-top:1px;">Active slot · <span id="topbar-source-slot" style="font-weight:700;">No slot selected</span> · Source file · <span id="topbar-source-file" style="font-family:monospace;font-size:0.68rem;">No file imported</span></div>
         </div>
       </div>
       <div class="topbar-right">
@@ -164,11 +164,11 @@
             Each import slot saves separately in IndexedDB, and edits stay in that slot.
           </div>
           <div class="landing-btns">
-            <button id="resume-btn" onclick="resumeFile()" class="btn-secondary" style="display:none;">
+            <button id="resume-btn" onclick="refreshSavedData()" class="btn-secondary" style="display:none;">
               <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
-              Load saved data
+              Refresh Saved Data
             </button>
             <button onclick="importExcelFile()" class="btn-primary">
               <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,8 +193,8 @@
               </svg>
             </div>
           </div>
-          <p style="color:#475569;font-size:0.85rem;font-weight:600;margin:0 0 4px;">Loading schedule data</p>
-          <p style="color:#94A3B8;font-size:0.75rem;margin:0;">Reading from test.xlsx…</p>
+          <p id="loading-title" style="color:#475569;font-size:0.85rem;font-weight:600;margin:0 0 4px;">Loading schedule data</p>
+          <p id="loading-detail" style="color:#94A3B8;font-size:0.75rem;margin:0;">Reading the active slot from IndexedDB…</p>
         </div>
       </div>
 
@@ -493,7 +493,7 @@
         </div>
         <div>
           <div style="font-size:0.95rem;font-weight:800;color:#0F172A;letter-spacing:-0.01em;">Import Excel</div>
-          <div style="font-size:0.72rem;color:#94A3B8;font-weight:500;margin-top:1px;">Choose where this workbook should be saved.</div>
+          <div style="font-size:0.72rem;color:#94A3B8;font-weight:500;margin-top:1px;">Choose the slot and how blank cells should behave during the import.</div>
         </div>
       </div>
       <button onclick="closeImportSlotModal()" style="padding:6px;border-radius:8px;border:none;background:transparent;cursor:pointer;color:#94A3B8;" onmouseover="this.style.background='#F1F5F9';this.style.color='#475569'" onmouseout="this.style.background='transparent';this.style.color='#94A3B8'">
@@ -525,6 +525,27 @@
           <div style="font-size:0.7rem;color:#94A3B8;margin-top:7px;font-weight:500;">Examples: May 2026, June 2026, July 2026</div>
         </div>
       </label>
+
+      <div style="padding:13px 14px;border:1.5px solid #E2E8F0;border-radius:12px;background:#F8FAFC;">
+        <div style="font-size:0.8rem;font-weight:800;color:#0F172A;">Blank cells on import</div>
+        <div style="font-size:0.7rem;color:#64748B;margin-top:5px;line-height:1.5;">When an imported employee/date cell is blank, choose whether to keep the saved IndexedDB value or clear it.</div>
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:12px;">
+          <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;">
+            <input id="import-blank-ignore" name="import-blank-mode" type="radio" value="ignore" checked style="margin-top:3px;accent-color:#2563EB;" />
+            <div>
+              <div style="font-size:0.78rem;font-weight:750;color:#1E293B;">Ignore blanks</div>
+              <div style="font-size:0.68rem;color:#64748B;margin-top:2px;">Default. Keep the saved cell when the updated workbook leaves it blank.</div>
+            </div>
+          </label>
+          <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;">
+            <input id="import-blank-clear" name="import-blank-mode" type="radio" value="clear" style="margin-top:3px;accent-color:#2563EB;" />
+            <div>
+              <div style="font-size:0.78rem;font-weight:750;color:#1E293B;">Clear matching blanks</div>
+              <div style="font-size:0.68rem;color:#64748B;margin-top:2px;">Blank imported cells will clear matching saved employee/date cells in the selected slot.</div>
+            </div>
+          </label>
+        </div>
+      </div>
     </div>
 
     <div id="import-target-error" style="display:none;margin-top:12px;font-size:0.74rem;font-weight:650;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:8px 10px;"></div>
@@ -667,9 +688,13 @@
       <div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
           <div style="font-size:0.68rem;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:0.07em;">Tags</div>
-          <div style="font-size:0.72rem;color:#94A3B8;font-weight:500;">Add one or more tags for filtering</div>
+          <div style="font-size:0.72rem;color:#94A3B8;font-weight:500;">Reuse slot tags or add a new one</div>
         </div>
         <div id="site-setup-tags" class="site-tag-list" style="margin-bottom:10px;"></div>
+        <div style="margin-bottom:10px;">
+          <div style="font-size:0.68rem;font-weight:700;color:#64748B;margin-bottom:6px;">Existing tags in this slot</div>
+          <div id="site-setup-existing-tags" class="site-tag-list"></div>
+        </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input id="site-setup-tag-input" type="text"
             style="flex:1;box-sizing:border-box;border:1.5px solid #E2E8F0;border-radius:10px;padding:9px 12px;font-size:0.875rem;outline:none;font-family:inherit;color:#0F172A;transition:border-color 0.15s,box-shadow 0.15s;"
@@ -800,7 +825,7 @@
 <script src="js/modal.js?v=hours-layout-2"></script>
 <script src="js/edit-job.js?v=full-idb-1"></script>
 <script src="js/email-config.js?v=hours-layout-2"></script>
-<script src="js/loader.js?v=import-target-1"></script>
+<script src="js/loader.js?v=reimport-merge-2"></script>
 
 <script>
 // Sidebar scroll-to
@@ -834,11 +859,11 @@ function closeSidebar() {
   window.addEventListener('resize', checkMobile);
 })();
 
-// Show file chip in sidebar once loaded
-function updateSidebarFileChip(name) {
+// Show active slot chip in sidebar once loaded
+function updateSidebarFileChip(slotLabel) {
   const chip = document.getElementById('sidebar-file-chip');
   const label = document.getElementById('sidebar-file-name');
-  if (chip && label) { label.textContent = name || 'test.xlsx'; chip.style.display = 'flex'; }
+  if (chip && label) { label.textContent = slotLabel || 'No active slot selected'; chip.style.display = 'flex'; }
 }
 
 function updateTopbarSource(slotLabel, fileLabel) {

@@ -1,6 +1,6 @@
 // Main data loader: Excel is import-only; IndexedDB is the app source of truth.
 async function loadFile(slotId = null) {
-  showLoading();
+  showLoading('Loading saved schedule data', 'Reading the active slot from IndexedDB...');
 
   try {
     if (slotId && typeof setActiveScheduleSlotId === 'function') {
@@ -29,7 +29,7 @@ async function importExcelFile() {
 }
 
 async function performImportExcelFile(target) {
-  showLoading();
+  showLoading('Importing schedule data', 'Preparing the selected slot for this Excel import...');
 
   try {
     const picked = await pickExcelFileBuffer();
@@ -40,16 +40,152 @@ async function performImportExcelFile(target) {
 
     const dataset = parseWorkbookToDataset(picked.buffer, picked.name);
     const slot = await prepareSlotForImport(dataset, picked.name, target);
-    window._activeScheduleSlotId = slot.id;
-    if (typeof saveScheduleDataToIDB === 'function') await saveScheduleDataToIDB(dataset);
     if (typeof setActiveScheduleSlotId === 'function') await setActiveScheduleSlotId(slot.id);
+    window._activeScheduleSlotId = slot.id;
+
+    const savedDataset = target?.mode === 'existing' && typeof getScheduleDataFromIDB === 'function'
+      ? await getScheduleDataFromIDB(slot.id)
+      : null;
+    const nextDataset = shouldMergeImportedDataset(savedDataset, target)
+      ? mergeScheduleDatasets(savedDataset, dataset, { blankBehavior: target?.blankBehavior })
+      : {
+          ...dataset,
+          updatedAt: new Date().toISOString()
+        };
+
+    if (typeof saveScheduleDataToIDB === 'function') await saveScheduleDataToIDB(nextDataset);
     await refreshSlotUI();
-    await renderDashboardFromDataset(dataset);
+    await renderDashboardFromDataset(nextDataset);
     showToast(`Imported ${picked.name} into ${slot.label}`);
   } catch (err) {
     showLanding();
     showLoadError(err);
   }
+}
+
+function normalizeImportBlankBehavior(value) {
+  return value === 'clear' ? 'clear' : 'ignore';
+}
+
+function shouldMergeImportedDataset(savedDataset, target = {}) {
+  return target?.mode === 'existing'
+    && !!savedDataset
+    && Array.isArray(savedDataset.employees)
+    && Array.isArray(savedDataset.dateCols);
+}
+
+function buildScheduleDateEntries(dateCols = []) {
+  const entries = new Map();
+
+  dateCols.forEach((col, index) => {
+    const date = String(col?.date || '').trim();
+    if (!date) return;
+    const current = entries.get(date);
+    entries.set(date, {
+      date,
+      day: String(col?.day || current?.day || '').trim(),
+      idx: index + 2
+    });
+  });
+
+  return entries;
+}
+
+function sortScheduleDateCols(dateCols = []) {
+  return [...dateCols].sort((a, b) => {
+    const aIso = typeof dateLabelToISO === 'function' ? dateLabelToISO(a?.date || '') : '';
+    const bIso = typeof dateLabelToISO === 'function' ? dateLabelToISO(b?.date || '') : '';
+    if (aIso && bIso && aIso !== bIso) return aIso.localeCompare(bIso);
+    if (aIso !== bIso) return aIso ? -1 : 1;
+    return String(a?.date || '').localeCompare(String(b?.date || ''));
+  });
+}
+
+function buildScheduleEmployeeEntries(dataset) {
+  const dateCols = Array.isArray(dataset?.dateCols) ? dataset.dateCols : [];
+  const employees = Array.isArray(dataset?.employees) ? dataset.employees : [];
+  const map = new Map();
+  const order = [];
+
+  employees.forEach(employee => {
+    const name = String(employee?.name || '').trim();
+    if (!name) return;
+
+    let entry = map.get(name);
+    if (!entry) {
+      entry = { name, cells: new Map() };
+      map.set(name, entry);
+      order.push(name);
+    }
+
+    const days = Array.isArray(employee?.days) ? employee.days : [];
+    dateCols.forEach((col, index) => {
+      const date = String(col?.date || '').trim();
+      if (!date) return;
+      entry.cells.set(date, String(days[index] ?? '').trim());
+    });
+  });
+
+  return { map, order };
+}
+
+function mergeScheduleDatasets(savedDataset, importedDataset, options = {}) {
+  const blankBehavior = normalizeImportBlankBehavior(options.blankBehavior);
+  const now = new Date().toISOString();
+  const existing = savedDataset && typeof savedDataset === 'object' ? savedDataset : {};
+  const imported = importedDataset && typeof importedDataset === 'object' ? importedDataset : {};
+
+  const mergedDateEntries = buildScheduleDateEntries(existing.dateCols);
+  buildScheduleDateEntries(imported.dateCols).forEach((entry, date) => {
+    const current = mergedDateEntries.get(date);
+    mergedDateEntries.set(date, {
+      date,
+      day: String(entry.day || current?.day || '').trim(),
+      idx: current?.idx || entry.idx
+    });
+  });
+
+  const mergedDateCols = sortScheduleDateCols([...mergedDateEntries.values()])
+    .map((col, index) => ({
+      idx: index + 2,
+      date: col.date,
+      day: col.day
+    }));
+
+  const existingEmployees = buildScheduleEmployeeEntries(existing);
+  const importedEmployees = buildScheduleEmployeeEntries(imported);
+  const employeeOrder = [
+    ...existingEmployees.order,
+    ...importedEmployees.order.filter(name => !existingEmployees.map.has(name))
+  ];
+
+  const employees = employeeOrder.map(name => {
+    const existingEntry = existingEmployees.map.get(name);
+    const importedEntry = importedEmployees.map.get(name);
+
+    return {
+      name: existingEntry?.name || importedEntry?.name || name,
+      days: mergedDateCols.map(col => {
+        const existingValue = existingEntry?.cells.has(col.date) ? existingEntry.cells.get(col.date) : '';
+        if (!importedEntry?.cells.has(col.date)) return existingValue || '';
+
+        const importedValue = importedEntry.cells.get(col.date) || '';
+        if (importedValue) return importedValue;
+        return blankBehavior === 'clear' ? '' : (existingValue || '');
+      })
+    };
+  });
+
+  return {
+    ...existing,
+    ...imported,
+    sourceName: imported.sourceName || existing.sourceName || '',
+    sheetName: imported.sheetName || existing.sheetName || '',
+    importedAt: existing.importedAt || imported.importedAt || now,
+    updatedAt: now,
+    dateCols: mergedDateCols,
+    employees
+  };
 }
 
 function deriveSlotLabel(dataset, fallbackName = '') {
@@ -106,7 +242,15 @@ async function prepareSlotForImport(dataset, importName, target = {}) {
   };
 }
 
-function showLoading() {
+function setLoadingMessage(title, detail) {
+  const titleEl = document.getElementById('loading-title');
+  const detailEl = document.getElementById('loading-detail');
+  if (titleEl) titleEl.textContent = title || 'Loading schedule data';
+  if (detailEl) detailEl.textContent = detail || 'Reading the active slot from IndexedDB...';
+}
+
+function showLoading(title, detail) {
+  setLoadingMessage(title, detail);
   document.getElementById('landing').classList.add('hidden');
   document.getElementById('loading').classList.remove('hidden');
   document.getElementById('dashboard').classList.add('hidden');
@@ -327,9 +471,12 @@ function renderScheduleTable(employees, dateCols) {
 }
 
 function getWeekKey(dateLabel) {
-  const months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
-  const [d, m, y] = String(dateLabel || '').split(' ');
-  const dt = new Date(Date.UTC(+y, months[m], +d));
+  const iso = typeof dateLabelToISO === 'function' ? dateLabelToISO(dateLabel) : null;
+  if (!iso) return `invalid:${String(dateLabel || '').trim()}`;
+
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (Number.isNaN(dt.getTime())) return `invalid:${String(dateLabel || '').trim()}`;
   const dow = (dt.getUTCDay() + 6) % 7;
   const mon = new Date(dt);
   mon.setUTCDate(dt.getUTCDate() - dow);
@@ -389,6 +536,10 @@ function showLanding() {
 }
 
 async function resumeFile() {
+  await refreshSavedData();
+}
+
+async function refreshSavedData() {
   await loadFile();
 }
 
@@ -416,6 +567,8 @@ async function populateImportTargetOptions() {
   const newRadio = document.getElementById('import-target-new');
   const select = document.getElementById('import-target-slot');
   const labelInput = document.getElementById('import-target-label');
+  const blankIgnore = document.getElementById('import-blank-ignore');
+  const blankClear = document.getElementById('import-blank-clear');
   const error = document.getElementById('import-target-error');
 
   if (select) {
@@ -433,6 +586,11 @@ async function populateImportTargetOptions() {
 
   if (labelInput && !labelInput.value.trim()) {
     labelInput.value = '';
+  }
+
+  if (blankIgnore && blankClear) {
+    blankIgnore.checked = true;
+    blankClear.checked = false;
   }
 
   if (error) {
@@ -456,6 +614,10 @@ function updateImportTargetMode() {
   if (labelInput) labelInput.disabled = mode !== 'new';
 }
 
+function getSelectedImportBlankMode() {
+  return normalizeImportBlankBehavior(document.querySelector('input[name="import-blank-mode"]:checked')?.value);
+}
+
 function showImportTargetError(message) {
   const error = document.getElementById('import-target-error');
   if (!error) return;
@@ -467,6 +629,7 @@ async function submitImportSlotModal() {
   const mode = getSelectedImportTargetMode();
   const slotId = document.getElementById('import-target-slot')?.value || '';
   const label = (document.getElementById('import-target-label')?.value || '').trim().replace(/\s+/g, ' ');
+  const blankBehavior = getSelectedImportBlankMode();
 
   if (mode === 'existing' && !slotId) {
     showImportTargetError('Choose an existing slot or create a new slot label.');
@@ -480,7 +643,7 @@ async function submitImportSlotModal() {
   }
 
   closeImportSlotModal();
-  await performImportExcelFile({ mode, slotId, label });
+  await performImportExcelFile({ mode, slotId, label, blankBehavior });
 }
 
 async function onSlotPickerChange(slotId) {
@@ -494,6 +657,7 @@ async function refreshSlotUI() {
   const activeSlotId = typeof getActiveScheduleSlotId === 'function' ? await getActiveScheduleSlotId() : null;
   const select = document.getElementById('slot-picker');
   const status = document.getElementById('slot-status');
+  const activeSlot = slots.find(slot => slot.id === activeSlotId) || null;
 
   if (select) {
     select.innerHTML = slots.length
@@ -507,6 +671,17 @@ async function refreshSlotUI() {
     status.textContent = activeSlot
       ? `${activeSlot.label} · ${activeSlot.lastImportName || activeSlot.sourceName || 'No file imported yet'}`
       : 'No active import slot selected';
+  }
+
+  if (typeof updateSidebarFileChip === 'function') {
+    updateSidebarFileChip(activeSlot?.label || 'No active slot selected');
+  }
+
+  if (typeof updateTopbarSource === 'function') {
+    updateTopbarSource(
+      activeSlot?.label || 'No slot selected',
+      activeSlot?.lastImportName || activeSlot?.sourceName || 'No file imported'
+    );
   }
 
   updateResumeVisibility(slots, activeSlotId);

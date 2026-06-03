@@ -303,6 +303,28 @@ function renderSiteSetupTags() {
     </span>`).join('');
 }
 
+function renderSiteSetupExistingTags() {
+  const host = document.getElementById('site-setup-existing-tags');
+  if (!host) return;
+
+  const existingTags = typeof getAllSiteTags === 'function' ? getAllSiteTags() : [];
+  const selectedKeys = new Set(normalizeSiteTags(window._siteSetupTags).map(tag => tag.toLowerCase()));
+
+  if (!existingTags.length) {
+    host.innerHTML = '<div class="site-tag-empty">No saved tags in this slot yet.</div>';
+    return;
+  }
+
+  host.innerHTML = existingTags.map(tag => {
+    const active = selectedKeys.has(String(tag || '').toLowerCase());
+    return `
+      <button type="button" onclick="toggleSiteSetupExistingTag('${encodeURIComponent(tag)}')"
+        style="display:inline-flex;align-items:center;gap:6px;margin:0 8px 8px 0;padding:7px 11px;border-radius:999px;border:1px solid ${active ? '#86EFAC' : '#D1FAE5'};background:${active ? '#ECFDF5' : '#F0FDFA'};color:${active ? '#047857' : '#0F766E'};font-size:0.76rem;font-weight:700;cursor:pointer;transition:background 0.12s,border-color 0.12s,color 0.12s;">
+        ${active ? '&#10003;' : '+'} ${escapeHtml(tag)}
+      </button>`;
+  }).join('');
+}
+
 function addSiteSetupTag() {
   const input = document.getElementById('site-setup-tag-input');
   if (!input) return;
@@ -317,6 +339,7 @@ function addSiteSetupTag() {
   window._siteSetupTags = normalizeSiteTags([...(window._siteSetupTags || []), ...parts]);
   input.value = '';
   renderSiteSetupTags();
+  renderSiteSetupExistingTags();
   input.focus();
 }
 
@@ -332,6 +355,22 @@ function removeSiteSetupTag(index) {
   tags.splice(index, 1);
   window._siteSetupTags = tags;
   renderSiteSetupTags();
+  renderSiteSetupExistingTags();
+}
+
+function toggleSiteSetupExistingTag(tag) {
+  const safeTag = decodeURIComponent(String(tag || '')).trim();
+  if (!safeTag) return;
+
+  const tags = normalizeSiteTags(window._siteSetupTags);
+  const key = safeTag.toLowerCase();
+  const hasTag = tags.some(entry => String(entry || '').toLowerCase() === key);
+  window._siteSetupTags = hasTag
+    ? tags.filter(entry => String(entry || '').toLowerCase() !== key)
+    : normalizeSiteTags([...tags, safeTag]);
+
+  renderSiteSetupTags();
+  renderSiteSetupExistingTags();
 }
 
 function openSiteSetupModal(siteId) {
@@ -367,6 +406,7 @@ function openSiteSetupModal(siteId) {
 
   window._siteSetupFlag = meta.flag || '';
   renderSiteSetupTags();
+  renderSiteSetupExistingTags();
   document.getElementById('site-setup-modal').style.display = 'flex';
 }
 

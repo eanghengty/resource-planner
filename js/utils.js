@@ -35,13 +35,25 @@ function expandSlashSites(base) {
 // ─── Parse "07 Apr 2026" → "2026-04-07" for date comparisons ────────────────
 function dateLabelToISO(label) {
   if (!label) return null;
+  const raw = String(label).trim();
+  if (!raw) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
   const months = { Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',
                    Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12' };
-  const parts = label.trim().split(/\s+/);
+  const parts = raw.split(/\s+/);
   if (parts.length < 3) return null;
-  const dd = parts[0].padStart(2,'0');
-  const mm = months[parts[1]] || '01';
-  const yyyy = parts[2];
+
+  const ddNum = Number(parts[0]);
+  const mm = months[parts[1]];
+  const yyyyNum = Number(parts[2]);
+  if (!Number.isInteger(ddNum) || !mm || !Number.isInteger(yyyyNum)) return null;
+
+  const dd = String(ddNum).padStart(2,'0');
+  const yyyy = String(yyyyNum).padStart(4, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
 

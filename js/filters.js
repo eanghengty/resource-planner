@@ -6,8 +6,17 @@ window._allTags = [];
 window._selectedTags = new Set();
 
 function monthKey(dateLabel) {
-  const parts = dateLabel.split(' ');
-  return parts.length >= 3 ? `${parts[1]} ${parts[2]}` : dateLabel;
+  const raw = String(dateLabel || '').trim();
+  const iso = typeof dateLabelToISO === 'function' ? dateLabelToISO(raw) : null;
+  if (iso) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const [yyyy, mm] = iso.split('-');
+    const monthIndex = Number(mm) - 1;
+    if (months[monthIndex] && yyyy) return `${months[monthIndex]} ${yyyy}`;
+  }
+
+  const parts = raw.split(' ');
+  return parts.length >= 3 ? `${parts[1]} ${parts[2]}` : raw;
 }
 
 function populateMonthFilter(dateCols) {
